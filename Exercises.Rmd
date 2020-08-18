@@ -1,0 +1,688 @@
+---
+title: "Exercises"
+author: "Jason Petri"
+date: "8/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(quantmod)
+library(dplyr)
+library(factoextra)
+library(arules)
+library(arulesViz)
+library(tm)
+library(randomForest)
+library(FNN)
+library(gbm)
+
+```
+
+# Visual story telling part 1: green buildings
+```{r green, echo=FALSE}
+url = "https://raw.githubusercontent.com/jgscott/STA380/master/data/greenbuildings.csv"
+df_greenbuildings = data.frame(read.csv(url(url)))
+
+summary(df_greenbuildings)
+```
+Above are the summary statistics for the buildings data set. Rent will be a primary projection and we must declare the relationships between rent and other features of this data set. Rent ranges from a low end of $2.98 to $250.00. This is a large difference. There should be other factors for these properties that determine this wide variety.
+
+```{r green2, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=green_rating, y=Rent, color=green_rating)) +
+  labs(x="Green Rating", y='Rent', title = 'Green buildings: Green Rating VS Rent',
+       color='Green building')
+
+```
+The preliminary analysis declared in the case begs the question: is there an apparent relationship between rent and the green rating. Above, it seems that the variance of rent charged is much lower than non-green buildings. Additionally, the average rent is situated lower for green rated buildings than normal buildings.
+
+```{r green3, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=Energystar, y=Rent, color=green_rating)) +
+  labs(x="Energystar rating", y='Rent', title = 'Green buildings: Energystar Rating VS Rent',
+       color='Green building')
+
+```
+Above, it appears as before. Energystar rated buildings are situated lower than non-energystar rated buildings in terms of rent.
+
+
+```{r green4, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=empl_gr, y=Rent, color=green_rating)) +
+  labs(x="Employment growth rate", y='Rent', title = 'Green buildings: Employment growht VS Rent',
+       color='Green building')
+
+```
+I am searching for a feature that would increase rent premiums. It does not appear that markets of higher growth influence rent.
+
+```{r green5, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=age, y=Rent, color=green_rating)) +
+  labs(x="Age", y='Rent', title = 'Green buildings: Age VS Rent',
+       color='Green Rating')
+
+```
+It appears that age does not influence rent all that much. As shown by the light blue dots, most energy efficient buildings are much newer.
+
+```{r green6, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=size, y=Rent, color=green_rating)) +
+  labs(x="Size", y='Rent', title = 'Green buildings: Size VS Rent',
+       color='Green building')
+
+```
+It does not seem very conclusive that size of the building is that influential on rent price.
+
+```{r green7, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=amenities, y=Rent, color=green_rating)) +
+  labs(x="Amenities", y='Rent', title = 'Green buildings: Amenities VS Rent',
+       color='Green building')
+
+```
+
+```{r green8, echo=FALSE}
+
+ggplot(df_greenbuildings, aes(x = Rent, color=class_a)) + 
+    geom_histogram(data=subset(df_greenbuildings, class_a == 1), fill = "red", alpha = 0.2) +
+    geom_histogram(data=subset(df_greenbuildings, class_b == 1), fill = "blue", alpha = 0.2) + 
+  labs(title = 'Class vs Rent', color = 'Class A') + 
+  theme(legend.position = "top")
+    #geom_histogram(data=subset(df_greenbuildings, yy == 'c'),fill = "green", alpha = 0.2)
+
+```
+
+Above, the red bars are class A buildings. The blue are class B buildings. AS you can see, there are premiums for buildings regarded as class A due to the slight skew on the right tail.
+
+```{r green9, echo=FALSE}
+
+ggplot(df_greenbuildings[df_greenbuildings$green_rating == 1, ], aes(x=Rent))+
+  geom_histogram(color="black", fill="lightblue",
+                 linetype="dashed") + 
+  labs(title = 'Green buildings: Frequency of Rent')
+
+```
+The above chart shows the frequency distribution of rents. This is the primary research the Excel guru used. This individual disregarded the many factors that can influence rents paid. For example, the market that they are in could allow premium rents to be charged. Simply looking at a median value disregards external factors.
+```{r green10, echo=FALSE}
+
+ggplot(df_greenbuildings[df_greenbuildings$green_rating == 0, ], aes(x=Rent))+
+  geom_histogram(color="black", fill="lightblue",
+                 linetype="dashed") + 
+  labs(title = 'Non-Green buildings: Frequency of Rent')
+
+```
+Above, the Non-Green buildings frequency by rent is showed. There is significant variation. It would be foolish to aggregate and take a median value across these properties to determine what rents could be charged in their area.
+
+```{r green11, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=leasing_rate, y=Rent, color=green_rating)) +
+  labs(x="Occupancy", y='Rent', title = 'Green buildings: Occupancy VS Rent',
+       color='Green building')
+
+```
+Looking at occupancy versus rent, it seems that properties with higher occupancy have higher rent. This is perhaps a confounding variable because a high occupancy could imply there is high demand for a property as such. We should explore those properties with high occupancy. Clearly these properties are in demand, and we should identify these properties as ideals.
+
+```{r green12, echo=FALSE}
+
+ggplot(data=df_greenbuildings) + 
+  geom_point(mapping=aes(x=cluster_rent, y=Rent, color=green_rating)) +
+  labs(x="Cluster Rent", y='Rent', title = 'Green buildings: Cluster Rent VS Rent',
+       color='Green building')
+
+```
+It seems that the most significant relationship between rent and a factor is what the average market rent in the area is currently at. This makes sense as you will want to charge the market going rate. Additionally, it does seem that the green buildings, colored in light blue, sit at a premium, on average, to their inefficient counterparts.
+
+So the excel guru really missed out on key factors like understanding what market rents are across different markets. This is the most influential factor that goes into rent expectations. Without running regressions, we cannot be completely sure exactly how the relationship between the variables and rents. Simply grabbing median values as your rent expectation disregards many other factors that influence what a building could charge in rent.
+
+Additionally, the fact that green buildings are typically newer, the comparison between average non-green buildings is a bad comparison. The analyst needs to go into more granular detail and identify properties within her market and similar ages of properties of similar class rating.
+
+#Visual story telling part 2: flights at ABIA
+```{r airport, echo=FALSE}
+url = "https://raw.githubusercontent.com/jgscott/STA380/master/data/ABIA.csv"
+df_abia = data.frame(read.csv(url(url)))
+
+summary(df_abia)
+```
+The above output are summary statistics for all features of the ABIA data set. There is a mix between categorical variables and quantitative variables.
+
+```{r airport2, echo=FALSE}
+ggplot(data=df_abia) + 
+  geom_point(mapping=aes(x=DayOfWeek, y=DepTime, color=Distance)) +
+  labs(x="Day of week", y='Departure time', title = 'Austin Airport: Day of week VS Departure time',
+       color='Distance')
+
+```
+Looking at the chart above, the Austin Airport has many flights that occur daily. With the color mapping to the distance of the flight, it does not appear that there is any apparent relationship between the day, time, and distance of the flight.
+
+```{r airport3, echo=FALSE}
+
+ggplot(df_abia, aes(x=CancellationCode)) + 
+  stat_count(width = 0.5)
+# Change colors
+p<-ggplot(df_abia, aes(x=CancellationCode)) + 
+  stat_count(color="black", fill="white")
+p
+
+```
+Most planes do not have cancellation codes.
+
+```{r airport4, echo=FALSE}
+
+ggplot(df_abia[df_abia[, "CancellationCode"] != "", ], aes(x=CancellationCode)) + 
+  stat_count(width = 0.5)
+# Change colors
+p<-ggplot(df_abia[df_abia[, "CancellationCode"] != "", ], aes(x=CancellationCode)) + 
+  stat_count(color="black", fill="white")
+p
+
+```
+Of the flights that were canceled, the primary reason was due to carrier issues. In close second, flights are canceled due to weather. In third, flights are canceled due to NAS. There were no instances of "D" security cancellations.
+
+```{r airport5, echo=FALSE}
+
+ggplot(df_abia, aes(x = DepDelay, color=Origin)) + 
+    geom_histogram(bins=10000, data=subset(df_abia, Origin == "AUS"), fill = "white", alpha = 0.2) +
+    geom_histogram(bins=10000, data=subset(df_abia, Origin == "JFK"), fill = "white", alpha = 0.2) + 
+  labs(title = 'Austin airport vs. JFK Departure Delay') + 
+  theme(legend.position = "top")
+
+```
+
+Compared to JFK, the Austin airport has significantly more departure delays than that of JFK. Expect delays if you are going anywhere from Austin. This could likely be due to the weather difference in Austin to New York.
+
+```{r airport6, echo=FALSE}
+
+ggplot(df_abia, aes(x = DepDelay, color=Origin)) + 
+    geom_histogram(bins=10000, data=subset(df_abia, Origin == "AUS"), fill = "white", alpha = 0.2) +
+    geom_histogram(bins=10000, data=subset(df_abia, Origin == "DFW"), fill = "white", alpha = 0.2) + 
+  labs(title = 'Austin airport vs. JFK Departure Delay') + 
+  theme(legend.position = "top")
+
+```
+
+Interestingly, the Dallas-Fort Worth airport has a similar distribution to Austin's. Perhaps this is due to shared weather delays.
+
+
+#Portfolio modeling
+
+```{r portfolio, echo=FALSE}
+
+set.seed(1)
+
+tickers = c("VGK", "EWU", "SHYG", "URE", "SVXY")
+
+date = as.Date("2015-01-02")
+
+getSymbols(tickers[1], src="yahoo", from="2015-01-01", to=Sys.Date())
+getSymbols(tickers[2], src="yahoo", from="2015-01-01", to=Sys.Date())
+getSymbols(tickers[3], src="yahoo", from="2015-01-01", to=Sys.Date())
+getSymbols(tickers[4], src="yahoo", from="2015-01-01", to=Sys.Date())
+getSymbols(tickers[5], src="yahoo", from="2015-01-01", to=Sys.Date())
+
+
+
+df_etf = data.frame(Delt(VGK[, 6]), Delt(EWU[, 6]), Delt(SHYG[, 6]), Delt(URE[, 6]), Delt(SVXY[, 6]))[-1,]
+colnames(df_etf)[1] = tickers[1]
+colnames(df_etf)[2] = tickers[2]
+colnames(df_etf)[3] = tickers[3]
+colnames(df_etf)[4] = tickers[4]
+colnames(df_etf)[5] = tickers[5]
+```
+
+```{r portfolio1, echo=FALSE}
+
+initial_wealth = 100000
+w_1 = c(0.1, 0.1, 0.1, 0.1, 0.6)
+p_1 = t(t(df_etf) * w_1)
+p_1 = rowSums(p_1)
+p_1 = p_1 * initial_wealth
+
+wealth_sim.p1 = rep(0, 5000)
+return_series = p_1
+n_days = 10
+for(i in 1:5000) {
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = sample(return_series, 1)
+    wealthtracker[today] = return.today
+  }
+  wealth_sim.p1[i] = mean(wealthtracker)
+}
+
+print(quantile(wealth_sim.p1, prob=0.05))
+hist(wealth_sim.p1)
+
+
+```
+
+```{r portfolio3, echo=FALSE}
+
+initial_wealth = 100000
+w_2 = c(0.1, 0.2, 0.1, 0.4, 0.2)
+p_2 = t(t(df_etf) * w_2)
+p_2 = rowSums(p_2)
+p_2 = p_2 * 100000
+
+wealth_sim.p2 = rep(0, 5000)
+return_series = p_2
+n_days = 10
+for(i in 1:5000) {
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = sample(return_series, 1)
+    wealthtracker[today] = return.today
+  }
+  wealth_sim.p2[i] = mean(wealthtracker)
+}
+
+print(quantile(wealth_sim.p2, prob=0.05))
+hist(wealth_sim.p2)
+
+```
+
+```{r portfolio4, echo=FALSE}
+
+
+w_3 = c(0.3, 0.1, 0.2, 0.2, 0.3)
+p_3 = t(t(df_etf) * w_3)
+p_3 = rowSums(p_3)
+p_3 = p_3 * 100000
+
+
+wealth_sim.p3 = rep(0, 5000)
+return_series = p_3
+n_days = 10
+for(i in 1:5000) {
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = sample(return_series, 1)
+    wealthtracker[today] = return.today
+  }
+  wealth_sim.p3[i] = mean(wealthtracker)
+}
+
+
+quantile(wealth_sim.p3, prob=0.05)
+hist(wealth_sim.p3)
+```
+Some of these portfolio returns are very skewed! Asset returns appear to be non-normal in many cases.
+
+#Market segmentation
+```{r market, echo=FALSE}
+url = "https://raw.githubusercontent.com/jgscott/STA380/master/data/social_marketing.csv"
+df_nutrient = data.frame(read.csv(url(url)))
+
+summary(df_nutrient)
+```
+```{r market1, echo=FALSE}
+
+s_nutrient = scale(df_nutrient[, 3:8])
+#m_nutrient = dist(s_nutrient, method="euclidean")
+cluster.nutrient = kmeans(s_nutrient, centers=3, nstart=25)
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster.nutrient, geom="point", data=s_nutrient)
+cluster.nutrient.plot
+```
+After broadly applying a k-means clustering algorithm to all the features, we achieve the previously shown chart. There is a lot of overlap with three clusters.
+I attempted to determine what is the optimal number of clusters.
+
+```{r market2, echo=FALSE}
+s_nutrients = scale(df_nutrient[, -1], center=TRUE, scale=TRUE)
+
+k.max = 30
+wss = sapply(1:k.max, function(k){kmeans(s_nutrients, k, nstart=10, iter.max = 50 )$tot.withinss})
+
+
+plot(1:k.max, wss,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters; K",
+       ylab="Total within-clusters sum of squares")
+
+
+```
+The chart above shows the total within-clusters sum of squares for given K values. K is the number of clusters to used to group the data. As the total within-clusters sum of squares values begin to level off around 20 total clusters, I will proceed with this quantity of clusters.
+
+```{r market3, echo=FALSE}
+
+cluster = kmeans(s_nutrients, centers = 10, nstart = 30)
+#rbind(cluster$centers[4,], (cluster$centers[4,]*cluster.sigma + cluster.mu))
+
+qplot(photo_sharing, sports_fandom, data=df_nutrient, color=factor(cluster$cluster))
+
+```
+The chart above shows some of the Twitter accounts and their respective cluster classifications. The clustering with 10 clusters does not seem too great. However, we can still see that there are two main clusters I like to think that this clustering model identified subsets of people that enjoy sports or sharing photos.
+
+```{r market4, echo=FALSE}
+
+
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster, geom="point", data=s_nutrients)
+cluster.nutrient.plot
+
+
+
+```
+Plotting the clusters overall do not seem very good at 10 clusters. Therefore, I have attempted to reduce dimensionality through principal components analysis.
+
+```{r market5, echo=FALSE}
+
+
+nutrients.pc = prcomp(df_nutrient[, 2:37], rank = 10, scale=TRUE)
+cluster.nutrient.pc = kmeans(nutrients.pc$x, centers=12, nstart=25)
+
+k.max = 30
+wss = sapply(1:k.max, 
+        function(k){kmeans(nutrients.pc$x, k, nstart=10, iter.max = 50 )$tot.withinss})
+
+
+plot(1:k.max, wss,
+       type="b", pch = 19, frame = FALSE, 
+       xlab="Number of clusters; K",
+       ylab="Total within-clusters sum of squares")
+
+```
+
+Because the previous cluster did not look too convincing, I have applied principal components analysis to reduce the dimensionality and obtain slightly better results. In the graphic above, the total within-clusters sum of squares has decreased. It appears that the models begin leveling off at a cluster amount of 10, as before. However, the total within-cluster sum of squares is much lower than the data used without principal components analysis.
+
+```{r market6, echo=FALSE}
+
+nutrients.pc = prcomp(df_nutrient[, 2:37], rank = 10, scale=TRUE)
+cluster.nutrient.pc = kmeans(nutrients.pc$x, centers=3, nstart=25)
+
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster.nutrient.pc, geom="point", data=nutrients.pc$x)
+cluster.nutrient.plot
+
+```
+After applying principal components analysis, the clusters seem to look a bit more separated. The previous chart looked very skewed and contained far more overlaps.
+
+
+```{r market7, echo=FALSE}
+
+
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster.nutrient.pc, geom="point", data=nutrients.pc$x[, 9:10])
+cluster.nutrient.plot
+
+```
+
+However, after attempting to reduce dimensionality, the results do not look convincing. With this understanding, I should attempt to simply use less features in the k-means clustering model.
+
+```{r market8, echo=FALSE}
+
+
+cluster.nutrient = kmeans(scale(df_nutrient[c(10, 12, 11)], center=TRUE, scale=TRUE), centers=3, nstart=25)
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster.nutrient, geom="point", data=df_nutrient[c(10, 12)])
+cluster.nutrient.plot
+
+```
+```{r market9, echo=FALSE}
+
+
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster.nutrient, geom="point", data=df_nutrient[c(10, 11)])
+cluster.nutrient.plot
+
+```
+
+```{r market10, echo=FALSE}
+
+
+cluster.nutrient.plot = factoextra::fviz_cluster(cluster.nutrient, geom="point", data=df_nutrient[c(10, 12)])
+cluster.nutrient.plot
+
+```
+
+I chose to cluster a close market group: those who tweet about food, home and garden, and family. I think attributes such as these could be beneficial for future marketing efforts. Those that like both food and home and garden will likely enjoy organic and nutritional foods. I assume that these individuals are likely tweeting about their gardens and crop yields. The food category was also looked at as these individuals would enjoy food of different kinds. I thought it was also important to add the family category to this cluster analysis. If we can understand the subsets of those who like food, family, and nutritious foods, then we could identify a target market for this product. If I were to understand more about the product itself, then this analysis could be highly tailored to the brand positioning of this product.
+
+
+
+#Author attrbution
+
+##Collect raw training data
+```{r authors, echo=FALSE}
+
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+
+
+author_dirs = Sys.glob("C:/Users/jason/OneDrive/2020-2021/Predictive Modeling/STA380-master/STA380-master/data/ReutersC50/C50train/*")
+author_dirs = author_dirs
+file_list = NULL
+labels = NULL
+
+for(author in author_dirs) {
+  author_name = as.list(strsplit(author, '/')[[1]])[12]
+	#author_name = substring(author, first=29)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	file_list = append(file_list, files_to_add)
+	labels = append(labels, rep(author_name, length(files_to_add)))
+}
+
+# Need a more clever regex to get better names here
+all_docs = lapply(file_list, readerPlain) 
+names(all_docs) = file_list
+names(all_docs) = sub('.txt', '', names(all_docs))
+
+#Corpus
+m_corpus = Corpus(VectorSource(all_docs))
+
+# Preprocessing
+my_corpus = m_corpus
+my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("en"))
+
+DTM = DocumentTermMatrix(my_corpus)
+DTM = removeSparseTerms(DTM, 0.975)
+
+X.train = as.matrix(DTM)
+#X.train = as.data.frame(X.train)
+Y.train = as.vector(labels)
+#Y.train = data.frame("author" = Y.train)
+```
+
+
+##Collect testing data
+
+```{r authors2, echo=FALSE}
+
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+
+
+author_dirs = Sys.glob("C:/Users/jason/OneDrive/2020-2021/Predictive Modeling/STA380-master/STA380-master/data/ReutersC50/C50test/*")
+author_dirs = author_dirs
+file_list = NULL
+labels = NULL
+
+for(author in author_dirs) {
+  author_name = as.list(strsplit(author, '/')[[1]])[12]
+	#author_name = substring(author, first=29)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	file_list = append(file_list, files_to_add)
+	labels = append(labels, rep(author_name, length(files_to_add)))
+}
+
+# Need a more clever regex to get better names here
+all_docs = lapply(file_list, readerPlain) 
+names(all_docs) = file_list
+names(all_docs) = sub('.txt', '', names(all_docs))
+
+#Corpus
+m_corpus = Corpus(VectorSource(all_docs))
+
+# Preprocessing
+my_corpus = m_corpus
+my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("en"))
+
+DTM = DocumentTermMatrix(my_corpus)
+DTM = removeSparseTerms(DTM, 0.975)
+
+X.test = as.matrix(DTM)
+#X.test = as.data.frame(X.test)
+Y.test = as.matrix(labels)
+#Y.test = data.frame("author" = Y.test)
+
+```
+
+
+```{r authors3, echo=FALSE}
+
+X.train.i = X.train[, intersect(colnames(X.train), colnames(X.test))]
+X.test.i = X.test[, intersect(colnames(X.train), colnames(X.test))]
+
+```
+I assumed that I will simply grab the intersection of shared words between the training and testing sample.
+
+##Principal Components Analysis
+
+```{r author4, echo=FALSE}
+
+a = X.train.i[, which(apply(X.train.i, 2, var) != 0)]
+pc_author = prcomp(a, scale=TRUE)
+
+
+var <- apply(pc_author$x, 2, var)  
+prop <- var / sum(var)
+
+plot(cumsum(pc_author$sdev^2/sum(pc_author$sdev^2)))
+
+```
+
+
+```{r author5, echo=FALSE}
+pc_author = prcomp(a, rank=1000, scale=TRUE)
+
+X.train.i.pca = as.matrix(pc_author$x)
+X.test.i.pca = predict(pc_author, X.test.i)
+
+
+forest_authors = randomForest(x = X.train.i.pca, 
+                              y = as.factor(as.data.frame(Y.train)),
+                              ntree=500)
+
+yhat_forest_authors = predict(forest_authors, X.test.i.pca)
+
+c = 0
+for (i in 1:length(yhat_forest_authors)) {
+  if (yhat_forest_authors[i] == Y.test[i]) {
+    #c = as.numeric(c) + 1
+    c = c + 1  
+  }
+  
+}
+
+c / length(yhat_forest_authors)
+
+```
+
+```{r author6, echo=FALSE}
+pc_author = prcomp(a, rank=1000, scale=TRUE)
+
+X.train.i.pca = as.matrix(pc_author$x)
+
+X.test.i.s = scale(X.test.i)
+X.test.i.pca = predict(pc_author, X.test.i)
+
+
+forest_authors = randomForest(x = X.train.i, 
+                              y = as.factor(as.data.frame(Y.train)),
+                              ntree=500)
+
+yhat_forest_authors = predict(forest_authors, X.test.i)
+
+c = 0
+for (i in 1:length(yhat_forest_authors)) {
+  if (yhat_forest_authors[i] == Y.test[i]) {
+    #c = as.numeric(c) + 1
+    c = c + 1  
+  }
+  
+}
+
+c / length(yhat_forest_authors)
+
+```
+This test accuracy of 51% is not very good. I am going to attempt to try a different model.
+
+
+```{r author7, echo=FALSE}
+
+author.knn = knn(train = X.train.i.pca, test = X.test.i.pca, cl = as.factor(as.data.frame(Y.train)), k = 2)
+
+author_pred_comp = data.frame(data.frame(Y.test), author.knn)
+names(author_pred_comp) = c("ObservedAuthor", "PredictedAuthor")
+
+head(author_pred_comp)
+
+c = 0
+for (i in 1:dim(author_pred_comp)[1]) {
+  if (author_pred_comp[i, "ObservedAuthor"] == author_pred_comp[i, "PredictedAuthor"]) {
+    #c = as.numeric(c) + 1
+    c = c + 1  
+  }
+  
+}
+
+head(author_pred_comp)
+
+c / dim(author_pred_comp)[1]
+
+
+
+```
+The KNN did not run very well. Above, I achieved a 11.8% test accuracy--not good! I played with many different values for the KNN parameters, but did not have great results. This was an attempt at cross validation of model parameters. No luck.
+```{r author8, echo=FALSE}
+
+boost.author = gbm(as.factor(as.data.frame(Y.train)) ~ X.train.i.pca,
+                             distribution = "multinomial",
+                             n.trees = 1000,
+                             interaction.depth = 4,
+                             shrinkage = 0.01)
+
+summary(boost.author)
+boost.yhat = predict(boost.author, newdata = as.data.frame(X.test.i.pca), 
+                     n.trees = 1000, type = 'response')
+
+
+y.pred = colnames(boost.yhat)[apply(boost.yhat,1,which.max)]
+
+
+sum(y.pred == Y.test)/length(Y.test)
+
+```
+After running a KNN and having little positive result, I ran a boosting forest model. I achieved a slightly higher test accuracy of 52.8%.
+
+
+#Association rule mining
+```{r association, echo=FALSE}
+
+
+grocery_data = scan("https://raw.githubusercontent.com/jgscott/STA380/master/data/groceries.txt", what = "", sep = "\n")
+head(grocery_data)
+
+```
+
+```{r association2, echo=FALSE}
+
+grocery_data_list = strsplit(grocery_data, ",")
+grocery_transactions = as(grocery_data_list, "transactions")
+
+grocery_transactions_rules = arules::apriori(grocery_transactions, 
+                          parameter=list(support=.03, confidence=.05, minlen=2))
+plot(grocery_transactions_rules, method='graph')
+```
+The chart above shows some association rules among common purchases when at the grocery store. Looking at the chart, whole milk is located at the center of many other purchases. To me personally, this makes sense. There are very few times where I would go to the store and not buy milk. Therefore, it is rational to me that whole milk is associated with purchases of many other items. Another interesting relationship is the rolls/buns item and sausage and soda relationships at the left side of the chart. When buying rolls/buns, you are likely buying them to put a sausage inside (at least in my personal life). Nearby is the soda item. To me, soda and these other items seem to go together very well.
